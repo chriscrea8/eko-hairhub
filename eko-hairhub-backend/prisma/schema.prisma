@@ -1,0 +1,267 @@
+// Eko HairHub — Prisma Schema
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  CUSTOMER
+  STYLIST
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum ServiceLocationType {
+  SALON
+  HOME
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum StylistStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  SUSPENDED
+}
+
+// ============================================================
+// MODELS
+// ============================================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  fullName  String
+  phone     String?
+  avatar    String?
+  role      UserRole @default(CUSTOMER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stylistProfile     StylistProfile?
+  bookingsAsCustomer Booking[]      @relation("CustomerBookings")
+  reviews            Review[]
+  notifications      Notification[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model StylistProfile {
+  id                String        @id @default(uuid())
+  userId            String        @unique
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio               String        @db.Text
+  specialties       String[]
+  location          String
+  area              String
+  status            StylistStatus @default(PENDING_VERIFICATION)
+  offersHomeService Boolean       @default(false)
+  homeServiceFee    Float?
+  yearsExperience   Int?
+  rating            Float         @default(0)
+  reviewCount       Int           @default(0)
+  totalEarnings     Float         @default(0)
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankName          String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  portfolioImages PortfolioImage[]
+  services        Service[]
+  bookings        Booking[]        @relation("StylistBookings")
+  availability    Availability[]
+  reviews         Review[]
+
+  @@index([area])
+  @@index([status])
+  @@index([rating])
+  @@map("stylist_profiles")
+}
+
+model PortfolioImage {
+  id               String         @id @default(uuid())
+  stylistProfileId String
+  stylistProfile   StylistProfile @relation(fields: [stylistProfileId], references: [id], onDelete: Cascade)
+  url              String
+  publicId         String
+  caption          String?
+  hairstyleName    String?
+  order            Int            @default(0)
+  createdAt        DateTime       @default(now())
+
+  @@index([stylistProfileId])
+  @@map("portfolio_images")
+}
+
+model Service {
+  id               String         @id @default(uuid())
+  stylistProfileId String
+  stylistProfile   StylistProfile @relation(fields: [stylistProfileId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?        @db.Text
+  price            Float
+  duration         Int
+  category         String
+  isActive         Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  bookings Booking[]
+
+  @@index([stylistProfileId])
+  @@index([category])
+  @@map("services")
+}
+
+model Hairstyle {
+  id                 String    @id @default(uuid())
+  name               String
+  description        String    @db.Text
+  imageUrl           String
+  cloudinaryPublicId String?
+  category           String
+  tags               String[]
+  popularityScore    Int       @default(0)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  bookings Booking[]
+
+  @@index([category])
+  @@index([popularityScore])
+  @@map("hairstyles")
+}
+
+model Availability {
+  id               String         @id @default(uuid())
+  stylistProfileId String
+  stylistProfile   StylistProfile @relation(fields: [stylistProfileId], references: [id], onDelete: Cascade)
+  dayOfWeek        Int
+  startTime        String
+  endTime          String
+  isAvailable      Boolean        @default(true)
+
+  @@unique([stylistProfileId, dayOfWeek])
+  @@index([stylistProfileId])
+  @@map("availability")
+}
+
+model Booking {
+  id               String              @id @default(uuid())
+  customerId       String
+  customer         User                @relation("CustomerBookings", fields: [customerId], references: [id])
+  stylistProfileId String
+  stylist          StylistProfile      @relation("StylistBookings", fields: [stylistProfileId], references: [id])
+  serviceId        String
+  service          Service             @relation(fields: [serviceId], references: [id])
+  hairstyleId      String?
+  hairstyle        Hairstyle?          @relation(fields: [hairstyleId], references: [id])
+  status           BookingStatus       @default(PENDING)
+  locationType     ServiceLocationType
+  address          String?             @db.Text
+  scheduledAt      DateTime
+  notes            String?             @db.Text
+  totalAmount      Float
+  stylistNotes     String?             @db.Text
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  payment       Payment?
+  review        Review?
+  notifications Notification[]
+
+  @@index([customerId])
+  @@index([stylistProfileId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("bookings")
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  bookingId String        @unique
+  booking   Booking       @relation(fields: [bookingId], references: [id])
+  amount    Float
+  status    PaymentStatus @default(PENDING)
+  reference String        @unique
+  paystackId String?
+  channel   String?
+  currency  String        @default("NGN")
+  paidAt    DateTime?
+  refundedAt DateTime?
+  metadata  Json?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([bookingId])
+  @@index([reference])
+  @@index([status])
+  @@map("payments")
+}
+
+model Review {
+  id               String         @id @default(uuid())
+  bookingId        String         @unique
+  booking          Booking        @relation(fields: [bookingId], references: [id])
+  customerId       String
+  customer         User           @relation(fields: [customerId], references: [id])
+  stylistProfileId String
+  stylist          StylistProfile @relation(fields: [stylistProfileId], references: [id])
+  rating           Int
+  comment          String         @db.Text
+  isVisible        Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([stylistProfileId])
+  @@index([customerId])
+  @@index([rating])
+  @@map("reviews")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookingId String?
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+  title     String
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  type      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
